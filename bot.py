@@ -32,12 +32,13 @@ with app.app_context():
 # 1. /start Command Handler (Telegram ID based registration)
 @bot.message_handler(commands=['start'])
 def send_welcome(message):
-    tg_id = str(message.from_user.id)
-    user = User.query.filter_by(telegram_id=tg_id).first()
-    if not user:
-        user = User(telegram_id=tg_id, balance=100.0)
-        db.session.add(user)
-        db.session.commit()
+    with app.app_context():
+        tg_id = str(message.from_user.id)
+        user = User.query.filter_by(telegram_id=tg_id).first()
+        if not user:
+            user = User(telegram_id=tg_id, balance=100.0)
+            db.session.add(user)
+            db.session.commit()
         
     markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True, row_width=2)
     markup.add(
@@ -77,15 +78,16 @@ def live_matches(message):
 # 3. Wallet Balance Check
 @bot.message_handler(func=lambda message: message.text == '💰 My Wallet')
 def check_wallet(message):
-    tg_id = str(message.from_user.id)
-    user = User.query.filter_by(telegram_id=tg_id).first()
-    balance = user.balance if user else 0.0
+    with app.app_context():
+        tg_id = str(message.from_user.id)
+        user = User.query.filter_by(telegram_id=tg_id).first()
+        balance = user.balance if user else 0.0
     bot.reply_to(message, f"👤 **Your Account Summary**\n💳 Wallet Balance: ₹{balance:.2f}")
 
 # 4. Deposit Section (Minimum ₹300)
 @bot.message_handler(func=lambda message: message.text == '📥 Deposit (UPI / QR)')
 def deposit_menu(message):
-    upi_id = "BHARATPE2B0I0C8Z0Q12576@unitype" # Yahan apni real UPI ID daal dein
+    upi_id = "BHARATPE2B0I0C8Z0Q12576@unitype"
     
     deposit_text = (
         "📲 **Deposit via UPI / QR Code**\n\n"
@@ -139,15 +141,17 @@ def place_bet(message):
         amount = float(parts[3])
         tg_id = str(message.from_user.id)
         
-        user = User.query.filter_by(telegram_id=tg_id).first()
-        if not user or user.balance < amount:
-            bot.reply_to(message, "❌ Aapke wallet me itna balance nahi hai! Pehle deposit karein.")
-            return
-            
-        user.balance -= amount
-        new_bet = Bet(telegram_id=tg_id, match_info=match_name, team=team_name, amount=amount, status='PENDING')
-        db.session.add(new_bet)
-        db.session.commit()
+        with app.app_context():
+            user = User.query.filter_by(telegram_id=tg_id).first()
+            if not user or user.balance < amount:
+                bot.reply_to(message, "❌ Aapke wallet me itna balance nahi hai! Pehle deposit karein.")
+                return
+                
+            user.balance -= amount
+            new_bet = Bet(telegram_id=tg_id, match_info=match_name, team=team_name, amount=amount, status='PENDING')
+            db.session.add(new_bet)
+            db.session.commit()
+            rem_balance = user.balance
         
         bot.reply_to(
             message, 
@@ -155,7 +159,7 @@ def place_bet(message):
             f"🏟 Match: {match_name}\n"
             f"🏆 Team: {team_name}\n"
             f"💰 Amount: ₹{amount}\n"
-            f"💳 Remaining Balance: ₹{user.balance:.2f}", 
+            f"💳 Remaining Balance: ₹{rem_balance:.2f}", 
             parse_mode="Markdown"
         )
     except Exception as e:
@@ -188,21 +192,22 @@ def process_withdraw(message):
         upi_payout = parts[2]
         tg_id = str(message.from_user.id)
         
-        user = User.query.filter_by(telegram_id=tg_id).first()
-        if not user or user.balance < amount:
-            bot.reply_to(message, "❌ Aapke wallet me itna balance nahi hai!")
-            return
-            
         if amount < 100:
             bot.reply_to(message, "⚠️ Minimum withdrawal amount ₹100 hai.")
             return
             
-        # 1% Fee Calculation
-        fee = amount * 0.01
-        final_payout = amount - fee
-            
-        user.balance -= amount
-        db.session.commit()
+        with app.app_context():
+            user = User.query.filter_by(telegram_id=tg_id).first()
+            if not user or user.balance < amount:
+                bot.reply_to(message, "❌ Aapke wallet me itna balance nahi hai!")
+                return
+                
+            fee = amount * 0.01
+            final_payout = amount - fee
+                
+            user.balance -= amount
+            db.session.commit()
+            rem_balance = user.balance
         
         bot.reply_to(
             message, 
@@ -212,7 +217,7 @@ def process_withdraw(message):
             f"💸 You Will Get: **₹{final_payout:.2f}**\n"
             f"📱 UPI ID: {upi_payout}\n"
             f"⏳ Status: Pending\n"
-            f"💳 Remaining Balance: ₹{user.balance:.2f}", 
+            f"💳 Remaining Balance: ₹{rem_balance:.2f}", 
             parse_mode="Markdown"
         )
     except Exception as e:
